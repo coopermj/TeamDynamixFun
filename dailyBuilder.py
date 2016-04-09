@@ -1,3 +1,5 @@
+#!/usr/bin/python
+# This Python file uses the following encoding: utf-8
 #__        __   _                            _          _   _
 #\ \      / /__| | ___ ___  _ __ ___   ___  | |_ ___   | |_| |__   ___
 # \ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \ | __/ _ \  | __| '_ \ / _ \
@@ -71,89 +73,28 @@ from dateutil import parser
 #tfrom tableausdk.Extract import *
 import pytz
 #from tzlocal import get_localzone
-import math
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as md
+
 import sys, traceback
 
 def getdailyopen(c):
-	mindate = parser.parse(c.execute('SELECT date(MIN(CreatedDate), "localtime") FROM tickets').fetchone()[0])
-	maxdate = parser.parse(c.execute('SELECT date(MAX(CreatedDate), "localtime") FROM tickets').fetchone()[0])
-	loopdate = mindate
-	
-	d = []
+    mindate = parser.parse(c.execute('SELECT date(MIN(CreatedDate), "localtime") FROM tickets').fetchone()[0])
+    maxdate = parser.parse(c.execute('SELECT date(MAX(CreatedDate), "localtime") FROM tickets').fetchone()[0])
+    loopdate = mindate
 
-	# get the number of records from each day	
-	while loopdate < maxdate:
-		rec = [loopdate, loopdate]
-		recount = c.execute('SELECT count(*) FROM tickets WHERE CreatedDate < ? AND (CompletedDate > ? OR CompletedDate IS NULL)', rec).fetchone()[0]
-		print "date: " + str(loopdate) + " count: " + str(recount)
-		d.append((loopdate, recount))
-		loopdate = loopdate + timedelta(days=1)
+    d = []
 
-	# return the list of tuples
-	return d
-	
+    # get the number of records from each day
+    while loopdate < maxdate:
+        rec = [loopdate, loopdate]
+        recount = c.execute('SELECT count(*) FROM tickets WHERE CreatedDate < ? AND (CompletedDate > ? OR CompletedDate IS NULL)', rec).fetchone()[0]
+        print "date: " + str(loopdate) + " count: " + str(recount)
+        d.append((loopdate, recount))
+        loopdate = loopdate + timedelta(days=1)
 
-def plotcreates(c):
-	try:
-		#rowcount = c.execute('SELECT COUNT(DISTINCT(date(CreatedDate, "localtime"))) FROM tickets').fetchone()[0]
-		#print rowcount
-		#X = np.arange(rowcount)
-		#Y1 = (1-X/float(rowcount)) * np.random.uniform(0.5,1.0,rowcount)
-		#Y2 = (1-X/float(rowcount)) * np.random.uniform(0.5,1.0,rowcount)
-	
-		#plt.axes([0.025,0.025,0.95,0.95])
-		#plt.bar(X, +Y1, facecolor='#9999ff', edgecolor='white')
-		#plt.bar(X, -Y2, facecolor='#ff9999', edgecolor='white')
-		allrows = c.execute('SELECT date(CreatedDate, "localtime") AS CreatedDate, COUNT(ID) FROM tickets GROUP BY date(CreatedDate, "localtime")').fetchall()
-		dailyrows = getdailyopen(c)
+    # return the list of tuples
+    return d
 
-#		new_x = dates.datestr2num(date)
-		xs = []
-		for row in allrows:
-			xs.append(md.datestr2num(row[0]))
-		#dates = [q[0] for q in allrows]
-		counts =[q[1] for q in allrows]
-		counts2 = [r[1] for r in dailyrows]
-		print "xs: " + str(len(xs))
-		print "count: " + str(len(counts))
-		print "count2: " + str(len(counts2))
-	
-		#fig, ax = plt.subplots()
-		plt.plot_date(xs, counts, linestyle='solid',xdate=True, ydate=False)
-		#plt.plot_date(xs, counts2, linestyle='solid',xdate=True, ydate=False)		
-		#ax.plot_date(xs, counts2, linestyle='solid', marker='None', color='red')
-		#ax.autoscale_view()
-		#fig.autofmt_xdate()
-		plt.show()
-		#for row in allrows:
-	except:
-		print 'Plot failed'
-		conn.commit()
-		#conn.close()
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		print "*** print_tb:"
-		traceback.print_tb(exc_traceback, limit=1, file=sys.stdout)
-		print "*** print_exception:"
-		traceback.print_exception(exc_type, exc_value, exc_traceback,limit=2, file=sys.stdout)
-		print "*** print_exc:"
-		traceback.print_exc()
-		print "*** format_exc, first and last line:"
-		formatted_lines = traceback.format_exc().splitlines()
-		print formatted_lines[0]
-		print formatted_lines[-1]
-		print "*** format_exception:"
-		print repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
-		print "*** extract_tb:"
-		print repr(traceback.extract_tb(exc_traceback))
-		print "*** format_tb:"
-		print repr(traceback.format_tb(exc_traceback))
-		print "*** tb_lineno:", exc_traceback.tb_lineno
-	
-
-def getToken():
+def getToken(username, password):
     # Get Bearer Token
     # POST https://teamdynamix.com/TDWebApi/api/auth
 
@@ -172,9 +113,11 @@ def getToken():
                 "password": password
             })
         )
-        print('Bearer HTTP Status Code: {status_code}'.format(
-            status_code=response.status_code))
+        #print('Bearer HTTP Status Code: {status_code}'.format(
+        #    status_code=response.status_code))
         if 200 != response.status_code:
+            print('Bearer HTTP Status Code: {status_code}'.format(
+            status_code=response.status_code))
             return None
         #print('Response HTTP Response Body: {content}'.format(
          #   content=response.content))
@@ -194,10 +137,10 @@ def send_request(token, lastStart):
     """
 
     querystart = lastStart.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     queryend = parser.parse(querystart) + timedelta(weeks=1)
     queryend = queryend.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     print "Query goes from {start} to {end}".format(start=querystart, end=queryend)
 
     try:
@@ -210,7 +153,6 @@ def send_request(token, lastStart):
             },
             data=json.dumps({
                 "UpdatedDateFrom": querystart,
-                "UpdatedDateTo": queryend,
                 "MaxResults": 0
             })
         )
@@ -271,40 +213,85 @@ def getticket(token, ticketid):
         print('HTTP Request failed')
 
 
-def getData(c, lastStart):
-    token = getToken()
-    if token:
-        tdson = send_request(token, lastStart)
-        if tdson is None:
-        	return False
-        for Index in tdson:
-                ticket = getticket(token, Index['ID'])
-                if ticket:
-                    upsert(c, ticket)
-                    print Index['ID']
-        return True
-    else:
-      return False
+def getData(token, c, lastStart):
+    tdson = send_request(token, lastStart)
+    if tdson is None:
+        return False
+    for ticket in tdson:
+        upsert(c, ticket)
+        print ticket['ID']
+    return True
+
 
 def getlast(c):
-	#c.execute("SELECT MAX(datetime(runStart,'localtime')) FROM tdruns WHERE runEnd IS NOT NULL")
-	#c.execute("SELECT MAX(datetime(CreatedDate,'localtime')) FROM tickets")
-	#lastStart = datetime.now()
-#	c.execute("SELECT MAX(datetime(trackdate,'localtime')) FROM tdbatch")
-	c.execute("SELECT MAX(trackdate) FROM tdbatch")
-	data = c.fetchone()[0]
-#	c.execute('SELECT datetime("2015-07-01 00:00:00", "localtime")')
-	c.execute('SELECT "2015-12-01 00:00:00"')
-	tdate = parser.parse(c.fetchone()[0])
-	
-	if data:
-		greatestdate = parser.parse(data)
-		lastdate = max(greatestdate, tdate)
-	else:
-		lastdate = tdate
-	
-	#lastdate = lastdate - timedelta(minutes=2)
-	return lastdate
+    #c.execute("SELECT MAX(datetime(runStart,'localtime')) FROM tdruns WHERE runEnd IS NOT NULL")
+    #c.execute("SELECT MAX(datetime(CreatedDate,'localtime')) FROM tickets")
+    #lastStart = datetime.now()
+#   c.execute("SELECT MAX(datetime(trackdate,'localtime')) FROM tdbatch")
+    c.execute("SELECT MAX(trackdate) FROM tdbatch")
+    data = c.fetchone()[0]
+#   c.execute('SELECT datetime("2012-07-01 00:00:00", "localtime")')
+    c.execute('SELECT "2012-07-01 00:00:00"')
+    tdate = parser.parse(c.fetchone()[0])
+
+    if data:
+        greatestdate = parser.parse(data)
+        lastdate = max(greatestdate, tdate)
+    else:
+        lastdate = tdate
+
+    #lastdate = lastdate - timedelta(minutes=2)
+    return lastdate
+
+def checkconfig(config):
+    if config is None:
+        return False
+    if 'username' not in config:
+        return False
+    elif 'password' not in config:
+        return False
+    elif 'school' not in config:
+        return False
+    else:
+        return True
+
+def doconfig(config):
+    u = None
+    p = None
+    s = None
+    if config is None:
+        config = dict()
+
+    if 'username' not in config:
+        print "Enter your TeamDynamix username: ",
+        u = raw_input()
+        if u is None:
+            sys.exit(0)
+    else:
+        u = config['username']
+    if 'password' not in config:
+        print "Enter your TeamDynamix password: ",
+        p = raw_input()
+        if p is None:
+            sys.exit(0)
+    else:
+        p = config['password']
+    if 'school' not in config:
+        print "Enter your school name: ",
+        s = raw_input()
+    else:
+        s = config['school']
+
+    token = getToken(u,p)
+    if token is None:
+        doconfig(None)
+    else:
+        config['username'] = u
+        config['password'] = p
+        config['school'] = s
+        with open ('config.yaml', 'w') as outfile:
+            outfile.write(yaml.dump(config, default_flow_style=False))
+        return token
 
 
 # _     __  __       _                       _            _             _
@@ -317,7 +304,7 @@ def getlast(c):
 #| |__   ___ _ __ ___
 #| '_ \ / _ \ '__/ _ \
 #| | | |  __/ | |  __/
-#|_| |_|\___|_|  \___|  
+#|_| |_|\___|_|  \___|
 #
 
 
@@ -326,10 +313,15 @@ bindir = os.getcwd()
 #basedir = os.getcwd()
 #confdir = bindir + '/config'
 #tdedir = basedir + '/tde_repo'
-#conffile = 'config.yaml'
-#global config
-#config = yaml.safe_load(open(conffile))
-os.chdir(bindir)
+conffile = 'config.yaml'
+
+try:
+    config = yaml.safe_load(open(conffile))
+except:
+    config = None
+
+
+token = doconfig(config)
 
 conn = sqlite3.connect('td2.db')
 
@@ -337,7 +329,7 @@ c = conn.cursor()
 c.execute('PRAGMA journal_mode=OFF;') # bump da speed
 conn.commit()
 
-# Create table
+# Create tables if they do not exist
 
 c.execute('''CREATE TABLE IF NOT EXISTS tdbatch
             (ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,34 +372,36 @@ c.execute('INSERT INTO tdruns(proc, runStart) VALUES(?,?)', rec)
 # We can also close the connection if we are done with it.
 # Just be sure any changes have been committed or they will be lost.
 
-
-username = ''
-password = ''
-
 trackdate = getlast(c)
-	
-#getData(c, trackdate)
-
-while trackdate < now:
-	print "Starting loop with trackdate: " + str(trackdate)
-	wegood = getData(c, trackdate)
-	if wegood is False:
-		break
-	else:
-		rec = [trackdate]
-		c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
-		trackdate = trackdate + timedelta(weeks=2)
-		conn.commit()
-
-rec = [now]
-c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
-
-then = datetime.now()
-rec = [then, now]
-c.execute('UPDATE tdruns SET runEnd = ? WHERE runStart = ?', rec)
-
-conn.commit()
-
-plotcreates(c)
+wegood = getData(token, c, trackdate)
+if wegood is False:
+    sys.exit(1)
+else:
+    rec = [trackdate]
+    c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
+    conn.commit()
+    rec = [now]
+    c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
+    then = datetime.now()
+    rec = [then, now]
+    c.execute('UPDATE tdruns SET runEnd = ? WHERE runStart = ?', rec)
+    conn.commit()
 
 conn.close()
+
+#while trackdate < now:
+#    print "Starting loop with trackdate: " + str(trackdate)
+#    wegood = getData(token, c, trackdate)
+#    if wegood is False:
+#        break
+#    else:
+#        rec = [trackdate]
+#        c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
+#        trackdate = trackdate + timedelta(weeks=2)
+#        conn.commit()
+
+
+
+#conn.commit()
+
+#conn.close()
