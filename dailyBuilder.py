@@ -54,7 +54,7 @@
 #                    │             │
 #                    └─────────────┘
 
-
+earliestdate = '2015-07-01 00:00:00'
 
 # coding: utf-8
 import json
@@ -73,6 +73,8 @@ from dateutil import parser
 #tfrom tableausdk.Extract import *
 import pytz
 #from tzlocal import get_localzone
+from tableausdk import *
+from tableausdk.Extract import *
 
 import sys, traceback
 
@@ -138,10 +140,8 @@ def send_request(token, lastStart):
 
     querystart = lastStart.strftime("%Y-%m-%d %H:%M:%S")
 
-    queryend = parser.parse(querystart) + timedelta(weeks=1)
-    queryend = queryend.strftime("%Y-%m-%d %H:%M:%S")
 
-    print "Query goes from {start} to {end}".format(start=querystart, end=queryend)
+    print "Query starts at {start}".format(start=querystart)
 
     try:
         #print "Bearer {token}".format(token=token)
@@ -188,50 +188,26 @@ def upsert(c, row):
         "INSERT INTO tickets (AccountName, TypeCategoryName, TypeName, SlaName, IsSlaResolveByViolated, CreatedDate, ResponsibleGroupName, ServiceName, ServiceCategoryName, CompletedDate, ID) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS (SELECT changes() AS change FROM tickets WHERE change <> 0)",
         rec)
 
-
-def getticket(token, ticketid):
-    # Get Ticket
-    # GET https://app.teamdynamix.com/TDWebApi/api/tickets/481476
-    print "Getting ticketid: {ticketid}".format(ticketid=ticketid)
-
-    try:
-        response = requests.get(
-            url="https://app.teamdynamix.com/TDWebApi/api/tickets/{ticketid}".format(ticketid=ticketid),
-            headers={
-                "Authorization": "Bearer {token}".format(token=token),
-                "Content-Type": "application/octet-stream",
-            },
-        )
-        # print('Response HTTP Status Code: {status_code}'.format(
-        #    status_code=response.status_code))
-        if 200 != response.status_code:
-            sys.exit(-1)
-        #print('Response HTTP Response Body: {content}'.format(
-        #    content=response.content))
-        return response.json()
-    except requests.exceptions.RequestException:
-        print('HTTP Request failed')
-
-
 def getData(token, c, lastStart):
     tdson = send_request(token, lastStart)
     if tdson is None:
         return False
-    for ticket in tdson:
-        upsert(c, ticket)
-        print ticket['ID']
-    return True
+    else:
+        print "Processing tickets"
+        for ticket in tdson:
+            upsert(c, ticket)
+            #print ticket['ID']
+        return True
 
 
 def getlast(c):
-    #c.execute("SELECT MAX(datetime(runStart,'localtime')) FROM tdruns WHERE runEnd IS NOT NULL")
-    #c.execute("SELECT MAX(datetime(CreatedDate,'localtime')) FROM tickets")
-    #lastStart = datetime.now()
-#   c.execute("SELECT MAX(datetime(trackdate,'localtime')) FROM tdbatch")
     c.execute("SELECT MAX(trackdate) FROM tdbatch")
     data = c.fetchone()[0]
-#   c.execute('SELECT datetime("2012-07-01 00:00:00", "localtime")')
-    c.execute('SELECT "2012-07-01 00:00:00"')
+
+    earlystring = 'SELECT "' + earliestdate + '"'
+    #print earlystring
+    c.execute(earlystring)
+
     tdate = parser.parse(c.fetchone()[0])
 
     if data:
@@ -292,6 +268,152 @@ def doconfig(config):
         with open ('config.yaml', 'w') as outfile:
             outfile.write(yaml.dump(config, default_flow_style=False))
         return token
+
+def basicextract(cursor):
+    print "Building Tableau Extract"
+    basicfile = 'alltickets.tde'
+
+    # Tableau SDK does not all reading an extract, so updating an existing
+    # one is moot – so we delete it first
+    try:
+        os.remove(basicfile)
+    except OSError:
+        pass
+
+    # then build a new one
+    new_extract = Extract(basicfile)
+
+    # build our schema
+    table_definition = TableDefinition()
+    table_definition.addColumn('ID',         Type.INTEGER)    
+    table_definition.addColumn('AccountName', Type.UNICODE_STRING)
+    table_definition.addColumn('TypeCategoryName', Type.UNICODE_STRING)
+    table_definition.addColumn('TypeName', Type.UNICODE_STRING)
+    table_definition.addColumn('LocalCreatedDate', Type.DATETIME)
+    table_definition.addColumn('ServiceName', Type.UNICODE_STRING)
+    table_definition.addColumn('ServiceCategoryName', Type.UNICODE_STRING)
+    table_definition.addColumn('LocalCompletedDate', Type.DATETIME)
+
+    # Table always needs to be named Extract *shrug*
+    new_table = new_extract.addTable('Extract', table_definition)
+
+    # Query our db
+    cursor.execute("SELECT ID, AccountName, TypeCategoryName, TypeName, datetime(CreatedDate, 'localtime') AS LocalCreatedDate, ServiceName, ServiceCategoryName, datetime(CompletedDate, 'localtime') AS LocalCompletedDate FROM tickets")
+
+    for ID, AccountName, TypeCategoryName, TypeName, LocalCreatedDate, ServiceName, ServiceCategoryName, LocalCompletedDate in cursor.fetchall():
+        #print ID, AccountName
+        # Create new row
+        new_row = Row(table_definition)   # Pass the table definition to the constructor
+        # Set column values. The first parameter is the column number (its
+        # ordinal position) The second parameter (or second and subsequent paramaters) is 
+        # the value to set the column to.
+        new_row.setInteger(0, ID)
+        new_row.setString(1, AccountName)
+        new_row.setString(2, TypeCategoryName)
+        new_row.setString(3, TypeName)
+
+        d = parser.parse(LocalCreatedDate)
+        #if( CreatedDate.find(".") != -1) :
+        #        d = datetime.strptime(CreatedDate, "%Y-%m-%d %H:%M:%S.%f")
+        #else :
+        #        d = datetime.strptime(CreatedDate, "%Y-%m-%d %H:%M:%S")
+        new_row.setDateTime(4, d.year, d.month, d.day, d.hour, d.minute, d.second, d.microsecond/100 )
+
+        new_row.setString(5, ServiceName)
+        new_row.setString(6, ServiceCategoryName)
+        
+        #if( CompletedDate.find(".") != -1) :
+        #        d = datetime.datetime.strptime(CompletedDate, "%Y-%m-%d %H:%M:%S.%f")
+        #else :
+        #        d = datetime.datetime.strptime(CompletedDate, "%Y-%m-%d %H:%M:%S")
+        d = parser.parse(LocalCompletedDate)
+        new_row.setDateTime(7, d.year, d.month, d.day, d.hour, d.minute, d.second, d.microsecond/100 )
+
+        new_table.insert(new_row)
+
+    # Close the extract in order to save the .tde file and clean up resources
+    new_extract.close()
+
+
+def dailyextract(cursor):
+    print "Building Tableau Daily Extract"
+    dailyfile = 'dailyopen.tde'
+
+    # Tableau SDK does not all reading an extract, so updating an existing
+    # one is moot – so we delete it first
+    try:
+        os.remove(dailyfile)
+    except OSError:
+        pass
+
+    # then build a new one
+    new_extract = Extract(dailyfile)
+
+    # build our schema
+    table_definition = TableDefinition()
+    table_definition.addColumn('ID',         Type.INTEGER)    
+    table_definition.addColumn('AccountName', Type.UNICODE_STRING)
+    table_definition.addColumn('TypeCategoryName', Type.UNICODE_STRING)
+    table_definition.addColumn('TypeName', Type.UNICODE_STRING)
+    table_definition.addColumn('LocalCreatedDate', Type.DATETIME)
+    table_definition.addColumn('ServiceName', Type.UNICODE_STRING)
+    table_definition.addColumn('ServiceCategoryName', Type.UNICODE_STRING)
+    table_definition.addColumn('LocalCompletedDate', Type.DATETIME)
+    table_definition.addColumn('DisplayDate', Type.DATETIME)
+
+    # Table always needs to be named Extract *shrug*
+    new_table = new_extract.addTable('Extract', table_definition)
+
+    # build a daily loop starting with earliest date in the db
+    mindate = parser.parse(c.execute('SELECT date(MIN(CreatedDate), "localtime") FROM tickets').fetchone()[0])
+    #print "mindate: ", mindate
+    maxdate = parser.parse(c.execute('SELECT date(MAX(CreatedDate), "localtime") FROM tickets').fetchone()[0])
+    #print "maxdate: ", maxdate
+    loopdate = mindate
+    while loopdate < maxdate:
+
+        rec = [loopdate, loopdate]
+        cursor.execute("SELECT ID, AccountName, TypeCategoryName, TypeName, datetime(CreatedDate, 'localtime') AS LocalCreatedDate, ServiceName, ServiceCategoryName, datetime(CompletedDate, 'localtime') AS LocalCompletedDate FROM tickets WHERE datetime(CreatedDate, 'localtime') < ? AND (datetime(CompletedDate, 'localtime') > ? OR CompletedDate IS NULL)", rec)
+        #print "daily processing date: " + str(loopdate)
+        for ID, AccountName, TypeCategoryName, TypeName, LocalCreatedDate, ServiceName, ServiceCategoryName, LocalCompletedDate in cursor.fetchall():
+            # print ID, AccountName
+            # Create new row
+            new_row = Row(table_definition)   # Pass the table definition to the constructor
+            # Set column values. The first parameter is the column number (its
+            # ordinal position) The second parameter (or second and subsequent paramaters) is 
+            # the value to set the column to.
+            new_row.setInteger(0, ID)
+            new_row.setString(1, AccountName)
+            new_row.setString(2, TypeCategoryName)
+            new_row.setString(3, TypeName)
+
+            d = parser.parse(LocalCreatedDate)
+            #if( CreatedDate.find(".") != -1) :
+            #        d = datetime.strptime(CreatedDate, "%Y-%m-%d %H:%M:%S.%f")
+            #else :
+            #        d = datetime.strptime(CreatedDate, "%Y-%m-%d %H:%M:%S")
+            new_row.setDateTime(4, d.year, d.month, d.day, d.hour, d.minute, d.second, d.microsecond/100 )
+
+            new_row.setString(5, ServiceName)
+            new_row.setString(6, ServiceCategoryName)
+            
+            #if( CompletedDate.find(".") != -1) :
+            #        d = datetime.datetime.strptime(CompletedDate, "%Y-%m-%d %H:%M:%S.%f")
+            #else :
+            #        d = datetime.datetime.strptime(CompletedDate, "%Y-%m-%d %H:%M:%S")
+            d = parser.parse(LocalCompletedDate)
+            new_row.setDateTime(7, d.year, d.month, d.day, d.hour, d.minute, d.second, d.microsecond/100 )
+
+            d = loopdate
+            new_row.setDateTime(8, d.year, d.month, d.day, d.hour, d.minute, d.second, d.microsecond/100 )
+
+            new_table.insert(new_row)
+
+        loopdate = loopdate + timedelta(days=1)
+
+    # Close the extract in order to save the .tde file and clean up resources
+    new_extract.close()
+
 
 
 # _     __  __       _                       _            _             _
@@ -387,21 +509,13 @@ else:
     c.execute('UPDATE tdruns SET runEnd = ? WHERE runStart = ?', rec)
     conn.commit()
 
+# Due to the vagaries of using update dates instead of created dates,
+# we get old tickets in the flow that we need to terminate
+delstring = 'DELETE FROM tickets WHERE CreatedDate < "' + earliestdate + '"'
+c.execute(delstring)
+
+basicextract(c)
+dailyextract(c)
+
 conn.close()
 
-#while trackdate < now:
-#    print "Starting loop with trackdate: " + str(trackdate)
-#    wegood = getData(token, c, trackdate)
-#    if wegood is False:
-#        break
-#    else:
-#        rec = [trackdate]
-#        c.execute('INSERT INTO tdbatch (trackdate) VALUES(?)', rec)
-#        trackdate = trackdate + timedelta(weeks=2)
-#        conn.commit()
-
-
-
-#conn.commit()
-
-#conn.close()
