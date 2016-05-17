@@ -1,0 +1,21 @@
+### Requirements
+json
+yaml
+os
+shutil
+errno
+sqlite3
+requests
+time
+datetime 
+pytz
+tableausdk
+readchar
+sys, traceback
+copy
+threading 
+getpass
+zipfile
+zlib
+subprocess
+ctypes
